@@ -1,14 +1,42 @@
 * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-  }
-  
-  body {
-    background: black;
-    overflow: hidden;
-  }
-  
-  canvas {
-    display: block;
-  }
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: black;
+  overflow: hidden;
+}
+
+canvas {
+  display: block;
+}
+
+.logo {
+  position: fixed;
+  top: 24px;
+  left: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.logo-the {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  color: #88E788;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  padding-left: 4px;
+}
+
+.logo-title {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 28px;
+  color: #88E788;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
