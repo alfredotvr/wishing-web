@@ -116,12 +116,15 @@ rings.forEach((count, ringIndex) => {
 
 let birthIndex = 0;
 let lastBirthTime = 0;
-const BIRTH_INTERVAL = 120;
+const BIRTH_INTERVAL = 60;
+let webSettled = false;
+let plusHovered = false;
+let plusScale = 0;
 
 // --- EXPANDED NODE STATE ---
 const expanded = {
   node: null,
-  progress: 0,      // 0 = closed, 1 = fully open
+  progress: 0,
   animating: false,
   closing: false,
   originX: 0,
@@ -157,6 +160,7 @@ canvas.addEventListener('mousemove', e => {
     camera.ty = drag.camStartY - dy;
   }
   if (!expanded.node) hoveredNode = getHoveredNode(e.clientX, e.clientY);
+  plusHovered = isPlusHovered(e.clientX, e.clientY);
 });
 
 canvas.addEventListener('mousedown', e => {
@@ -180,15 +184,15 @@ canvas.addEventListener('mouseup', e => {
   camera.vy = -drag.velY * 0.3;
 
   if (!drag.didMove) {
-    // it's a click, not a drag
     if (expanded.node) {
-      // check X button hit
       const R = Math.min(canvas.width, canvas.height) * 0.32;
       const xBtnX = expanded.originX + R * 0.62;
       const xBtnY = expanded.originY - R * 0.62;
       if (Math.hypot(e.clientX - xBtnX, e.clientY - xBtnY) < 20) {
         closeExpanded();
       }
+    } else if (isPlusHovered(e.clientX, e.clientY) && webSettled) {
+      document.getElementById('thought-input').focus();
     } else {
       const hit = getHoveredNode(e.clientX, e.clientY);
       if (hit) openExpanded(hit, e.clientX, e.clientY);
@@ -246,6 +250,8 @@ canvas.addEventListener('touchend', e => {
       if (Math.hypot(t.clientX - xBtnX, t.clientY - xBtnY) < 24) {
         closeExpanded();
       }
+    } else if (isPlusHovered(t.clientX, t.clientY) && webSettled) {
+      document.getElementById('thought-input').focus();
     } else {
       const hit = getHoveredNode(t.clientX, t.clientY);
       if (hit) openExpanded(hit, t.clientX, t.clientY);
@@ -253,7 +259,7 @@ canvas.addEventListener('touchend', e => {
   }
 });
 
-// --- OPEN / CLOSE ---
+// --- OPEN / CLOSE NODE ---
 function openExpanded(node, sx, sy) {
   expanded.node = node;
   expanded.progress = 0;
@@ -268,6 +274,15 @@ function closeExpanded() {
   expanded.animating = true;
 }
 
+// --- MODAL ---
+function openModal() {
+  document.getElementById('submission-modal').classList.add('active');
+}
+
+function closeModal() {
+  document.getElementById('submission-modal').classList.remove('active');
+}
+
 // --- HIT TEST ---
 function getHoveredNode(mx, my) {
   return nodes.find(node => {
@@ -276,6 +291,13 @@ function getHoveredNode(mx, my) {
     const sy = node.wy - camera.y + CY;
     return Math.hypot(mx - sx, my - sy) < 20;
   });
+}
+
+function isPlusHovered(mx, my) {
+  const x = canvas.width / 2;
+  const y = canvas.height - 100;
+  const hitRadius = 52;
+  return Math.hypot(mx - x, my - y) < hitRadius;
 }
 
 // --- EDGE HELPERS ---
@@ -320,7 +342,7 @@ function getPopScale(node) {
 function drawPixelCircle(cx, cy, radius, color, alpha) {
   ctx.globalAlpha = alpha;
   ctx.fillStyle = color;
-  const step = 4; // pixel size
+  const step = 4;
   for (let py = -radius; py <= radius; py += step) {
     for (let px = -radius; px <= radius; px += step) {
       if (px * px + py * py <= radius * radius) {
@@ -333,6 +355,52 @@ function drawPixelCircle(cx, cy, radius, color, alpha) {
     }
   }
   ctx.globalAlpha = 1;
+}
+
+function drawPlusNode() {
+  if (!webSettled && plusScale <= 0) return;
+  const x = canvas.width / 2;
+  const y = canvas.height - 100;
+
+  // spring overshoot on first appearance
+  const displayScale = plusScale < 1
+    ? plusScale + Math.sin(plusScale * Math.PI) * 0.25
+    : 1;
+
+  const baseRadius = plusHovered ? 52 : 44;
+  const radius = Math.round(baseRadius * displayScale);
+  if (radius < 2) return;
+
+  const step = 4;
+  ctx.fillStyle = '#88E788';
+  ctx.globalAlpha = 1;
+
+  for (let row = -radius; row <= radius; row += step) {
+    for (let col = -radius; col <= radius; col += step) {
+      // check center of each pixel cell
+      const pcx = col + step / 2;
+      const pcy = row + step / 2;
+      if (pcx * pcx + pcy * pcy <= radius * radius) {
+        ctx.fillRect(
+          Math.floor((x + col) / step) * step,
+          Math.floor((y + row) / step) * step,
+          step, step
+        );
+      }
+    }
+  }
+
+  // + symbol — perfectly centered
+  ctx.fillStyle = '#000000';
+  const arm = Math.round(radius * 0.72);
+  const thick = Math.max(3, Math.round(radius * 0.2));
+  const cx = Math.floor(x / step) * step;
+  const cy = Math.floor(y / step) * step;
+
+  // horizontal bar
+  ctx.fillRect(cx - Math.floor(arm / 2), cy - Math.floor(thick / 2), arm, thick);
+  // vertical bar
+  ctx.fillRect(cx - Math.floor(thick / 2), cy - Math.floor(arm / 2), thick, arm);
 }
 
 // --- WRAP TEXT ---
@@ -368,7 +436,17 @@ function update(now) {
     }
   }
 
-  // animate expanded circle
+  if (!webSettled && now > 800) {
+    webSettled = true;
+    document.getElementById('submission-bar').classList.add('visible');
+  }
+  
+  // animate plus node popping in
+  if (webSettled && plusScale < 1) {
+    plusScale += (1 - plusScale) * 0.15;
+    if (plusScale > 0.999) plusScale = 1;
+  }
+
   if (expanded.animating) {
     const speed = 0.08;
     if (expanded.closing) {
@@ -405,13 +483,11 @@ function update(now) {
 function draw(now) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // blur background when expanded
   const blurring = expanded.node && expanded.progress > 0;
   if (blurring) {
     ctx.filter = `blur(${expanded.progress * 6}px)`;
   }
 
-  // edges
   edges.forEach(([i, j]) => {
     const a = nodes[i], b = nodes[j];
     if (!a.born || !b.born) return;
@@ -477,7 +553,6 @@ function draw(now) {
     }
   });
 
-  // nodes
   nodes.forEach(node => {
     if (!node.born) return;
     const viewScale = getViewScale(node);
@@ -494,26 +569,18 @@ function draw(now) {
     ctx.globalAlpha = 1;
   });
 
-  // reset blur before drawing overlay
   ctx.filter = 'none';
 
-  // expanded node overlay
   if (expanded.node || expanded.animating) {
     const p = expanded.progress;
-    // spring easing
-    const ease = p < 1
-      ? 1 - Math.pow(1 - p, 3)
-      : 1;
-
+    const ease = p < 1 ? 1 - Math.pow(1 - p, 3) : 1;
     const maxR = Math.min(canvas.width, canvas.height) * 0.32;
     const R = maxR * ease;
     const ox = expanded.originX;
     const oy = expanded.originY;
 
-    // draw pixelated green circle
     drawPixelCircle(ox, oy, R, '#88E788', Math.min(1, ease * 1.2));
 
-    // text — only show when mostly open
     if (p > 0.6 && expanded.node) {
       const textAlpha = (p - 0.6) / 0.4;
       const textR = R * 0.72;
@@ -534,7 +601,6 @@ function draw(now) {
 
       ctx.globalAlpha = 1;
 
-      // X button
       const xBtnX = ox + R * 0.62;
       const xBtnY = oy - R * 0.62;
       const xSize = Math.max(12, R * 0.12);
@@ -549,6 +615,8 @@ function draw(now) {
       ctx.globalAlpha = 1;
     }
   }
+
+  drawPlusNode();
 }
 
 function loop(now) {
@@ -556,5 +624,29 @@ function loop(now) {
   draw(now);
   requestAnimationFrame(loop);
 }
+
+// --- SUBMISSION ---
+document.getElementById('submit-btn').addEventListener('click', () => {
+  const thought = document.getElementById('thought-input').value.trim();
+  const username = document.getElementById('username-input').value.trim() || 'anonymous';
+  if (!thought) return;
+
+  const angle = Math.random() * Math.PI * 2;
+  const r = 160 + Math.random() * 320;
+  nodes.push({
+    wx: Math.cos(angle) * r,
+    wy: Math.sin(angle) * r,
+    born: true,
+    birthTime: performance.now(),
+    thought: `${thought} -${username}`,
+  });
+
+  document.getElementById('thought-input').value = '';
+});
+
+// also submit on Enter Key
+document.getElementById('thought-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('submit-btn').click();
+});
 
 requestAnimationFrame(loop);
